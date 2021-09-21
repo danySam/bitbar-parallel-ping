@@ -15,7 +15,7 @@ import (
 type host struct {
 	ip       string
 	name     string
-	pingInMs int64
+	pingInMs int
 }
 
 var hosts = []host{
@@ -46,17 +46,17 @@ func main() {
 	case hostsWithLatency = <-c:
 	}
 
-	latency := int64(0)
+	latency := int(0)
 	for _, l := range hostsWithLatency {
 		latency = latency + l.pingInMs
 	}
-	print("", latency/int64(len(hostsWithLatency)), false)
+	print("", latency/int(len(hostsWithLatency)), false)
 	for _, h := range hostsWithLatency {
 		print(h.name, h.pingInMs, true)
 	}
 }
 
-func print(text string, ping int64, dropdown bool) {
+func print(text string, ping int, dropdown bool) {
 	color := "green"
 	switch {
 	case ping < 100:
@@ -129,5 +129,5 @@ func ping(conn net.PacketConn, h host, seq int, c chan host) {
 	}
 
 	resTime = time.Now()
-	h.pingInMs = resTime.Sub(reqTime).Milliseconds()
+	h.pingInMs = int(resTime.Sub(reqTime).Milliseconds())
 }
