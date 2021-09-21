@@ -12,10 +12,21 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-func main() {
-	c := make(chan []int64)
+type host struct {
+	ip       string
+	name     string
+	pingInMs int64
+}
 
-	latencies := []int64{9999999, 9999999}
+var hosts = []host{
+	{ip: "1.1.1.1", name: "Cloudflare", pingInMs: 9999999},
+	{ip: "8.8.8.8", name: "Google", pingInMs: 9999999},
+}
+
+func main() {
+	c := make(chan []host)
+
+	hostsWithLatency := hosts
 	ctx := context.Background()
 
 	ctxWithTimeout, cancelCtx := context.WithTimeout(ctx, 1*time.Second)
@@ -27,21 +38,22 @@ func main() {
 	}
 	defer conn.Close()
 
-	go pingWithTimeout(ctx, conn, c)
+	go parallelPing(ctx, conn, c, hosts)
 
 	select {
 	case <-ctxWithTimeout.Done():
-		latencies = []int64{10000, 10000}
-	case latencies = <-c:
+		hostsWithLatency = hosts
+	case hostsWithLatency = <-c:
 	}
 
 	latency := int64(0)
-	for _, l := range latencies {
-		latency = latency + l
+	for _, l := range hostsWithLatency {
+		latency = latency + l.pingInMs
 	}
-	print("", latency/int64(len(latencies)), false)
-	print("Google: ", latencies[0], true)
-	print("Cloudflare: ", latencies[1], true)
+	print("", latency/int64(len(hostsWithLatency)), false)
+	for _, h := range hostsWithLatency {
+		print(h.name, h.pingInMs, true)
+	}
 }
 
 func print(text string, ping int64, dropdown bool) {
@@ -56,23 +68,30 @@ func print(text string, ping int64, dropdown bool) {
 	default:
 		color = "red"
 	}
+	if text != "" {
+		text = text + ": "
+	}
 	fmt.Printf("%s%dms|color=\"%s\" dropdown=\"%t\" font=\"Hack\"\n", text, ping, color, dropdown)
 }
 
-func pingWithTimeout(_ context.Context, conn net.PacketConn, c chan []int64) {
-	ch1 := make(chan int64)
-	ch2 := make(chan int64)
-	go ping(conn, "8.8.8.8", 5894, ch1)
-	go ping(conn, "1.1.1.1", 5233, ch2)
+func parallelPing(_ context.Context, conn net.PacketConn, c chan []host, hosts []host) {
+	ch := make(chan host, len(hosts))
+	for _, host := range hosts {
+		go ping(conn, host, 0, ch)
+	}
 
-	t1, t2 := <-ch1, <-ch2
-	c <- []int64{t1, t2}
+	var pings []host
+	for i := 0; i < len(hosts); i++ {
+		hostWithPing := <-ch
+		pings = append(pings, hostWithPing)
+	}
+
+	c <- pings
 }
 
-func ping(conn net.PacketConn, ip string, seq int, c chan int64) {
-	pingInMs := int64(9999999)
+func ping(conn net.PacketConn, h host, seq int, c chan host) {
 	defer func() {
-		c <- pingInMs
+		c <- h
 	}()
 
 	reqMessage := icmp.Message{
@@ -91,7 +110,7 @@ func ping(conn net.PacketConn, ip string, seq int, c chan int64) {
 	}
 
 	reqTime := time.Now()
-	if _, err := conn.WriteTo(reqMessageEncoded, &net.UDPAddr{IP: net.ParseIP(ip)}); err != nil {
+	if _, err := conn.WriteTo(reqMessageEncoded, &net.UDPAddr{IP: net.ParseIP(h.ip)}); err != nil {
 		return
 	}
 
@@ -110,5 +129,5 @@ func ping(conn net.PacketConn, ip string, seq int, c chan int64) {
 	}
 
 	resTime = time.Now()
-	pingInMs = resTime.Sub(reqTime).Milliseconds()
+	h.pingInMs = resTime.Sub(reqTime).Milliseconds()
 }
