@@ -51,6 +51,7 @@ func main() {
 		latency = latency + l.pingInMs
 	}
 	print("", latency/int(len(hostsWithLatency)), false)
+	fmt.Printf("---\n")
 	for _, h := range hostsWithLatency {
 		print(h.name, h.pingInMs, true)
 	}

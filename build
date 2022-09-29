@@ -1,0 +1,4 @@
+#!/bin/bash
+go build -o data
+mv data dist/data.1s.cgo
+
